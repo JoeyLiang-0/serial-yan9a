@@ -237,7 +237,7 @@ bool ceSerial::Write(char *data) {
 	}
 	BOOL fRes;
 	DWORD dwWritten;
-	long n = strlen(data);
+	uint32_t n = (uint32_t)strlen(data);
 	if (n < 0) n = 0;
 	else if(n > 1024) n = 1024;
 
