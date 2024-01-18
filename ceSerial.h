@@ -55,14 +55,13 @@ public:
 	ceSerial();
 	ceSerial(std::string Device, long BaudRate, long DataSize, char ParityType, float NStopBits);
 	~ceSerial();
-	long Open(void);//return 0 if success
+	long Open(void);			// return 0 if success
 	void Close();
-	char ReadChar(bool& success);//return read char if success
-	bool WriteChar(char ch);////return success flag
-	bool Write(char *data);//write null terminated string and return success flag
-	bool Write(char *data,long n);
-	bool SetRTS(bool value);//return success flag
-	bool SetDTR(bool value);//return success flag
+	bool ReadChar(char& ch);	// return true if a char was read
+	bool WriteChar(char ch);	// return true if succeeded
+	long Write(char *data, long n);
+	bool SetRTS(bool value);	//return success flag
+	bool SetDTR(bool value);	//return success flag
 	bool GetCTS(bool& success);
 	bool GetDSR(bool& success);
 	bool GetRI(bool& success);

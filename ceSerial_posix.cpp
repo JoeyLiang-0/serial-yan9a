@@ -90,18 +90,35 @@ ceSerial::FlowControl ceSerial::GetFlowControl()
 }
 
 
-long ceSerial::Open(void) {
+long ceSerial::Open(void) 
+{
+	fd = open(port.c_str(), O_RDWR | O_NONBLOCK);
+	if (fd == -1) 
+	{
+		return errno;
+	}
+
 	struct serial_struct serinfo;
+	memset(&serinfo, 0, sizeof(serinfo));
 	struct termios settings;
 	memset(&settings, 0, sizeof(settings));
+	if (tcgetattr(fd, &settings) < 0)
+	{
+		return errno;
+	}
+
 	settings.c_iflag = 0;
 	settings.c_oflag = 0;
 
 	settings.c_cflag = CREAD | CLOCAL;//see termios.h for more information
-	if(dsize==5)  settings.c_cflag |= CS5;//no change
-	else if (dsize == 6)  settings.c_cflag |= CS6;
-	else if (dsize == 7)  settings.c_cflag |= CS7;
-	else settings.c_cflag |= CS8;
+	settings.c_cflag &= ~CSIZE;
+	switch (dsize)
+	{
+		case 5:  settings.c_cflag |= CS5;	break;	//no change
+		case 6:  settings.c_cflag |= CS6;	break;
+		case 7:  settings.c_cflag |= CS7;	break;
+		default: settings.c_cflag |= CS8;	break;
+	}
 
 	if(stopbits==2) settings.c_cflag |= CSTOPB;
 
@@ -113,12 +130,8 @@ long ceSerial::Open(void) {
 	settings.c_cc[VMIN] = 1;
 	settings.c_cc[VTIME] = 0;
 
-	fd = open(port.c_str(), O_RDWR | O_NONBLOCK);
-	if (fd == -1) {
-		return errno;
-	}
-
-	if (!stdbaud) {
+	if (!stdbaud) 
+	{
 		// serial driver to interpret the value B38400 differently		
 		serinfo.reserved_char[0] = 0;
 		if (ioctl(fd, TIOCGSERIAL, &serinfo) < 0) {	return errno;}
@@ -138,7 +151,8 @@ long ceSerial::Open(void) {
 		cfsetospeed(&settings, B38400);
 		cfsetispeed(&settings, B38400);
 	}
-	else {
+	else 
+	{
 		cfsetospeed(&settings, baud);
 		cfsetispeed(&settings, baud);
 	}	
@@ -161,7 +175,14 @@ long ceSerial::Open(void) {
 			break;
 	}
 
-	tcsetattr(fd, TCSANOW, &settings);
+	tcflush(fd, TCIFLUSH);
+	cfmakeraw(&settings);
+
+	if (tcsetattr(fd, TCSANOW, &settings) < 0)
+	{
+		return errno;
+	}
+
 	int flags = fcntl(fd, F_GETFL, 0);
 	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
@@ -233,34 +254,33 @@ long ceSerial::GetBaudRate() {
 	return baud;
 }
 
-char ceSerial::ReadChar(bool& success) {
-	success=false;
-	if (!IsOpened()) {return 0;	}
-	success=read(fd, &rxchar, 1)==1;
-	return rxchar;
+bool ceSerial::ReadChar(char& ch) 
+{
+	return IsOpened() && read(fd, &ch, 1) == 1;
 }
 
-bool ceSerial::Write(char *data) {
-	if (!IsOpened()) {return false;	}
-	long n = strlen(data);
-	if (n < 0) n = 0;
-	else if(n > 1024) n = 1024;
-	return (write(fd, data, n)==n);
+bool ceSerial::WriteChar(char ch) 
+{
+	return IsOpened() && write(fd, &ch, 1) == 1;
 }
 
-bool ceSerial::Write(char *data,long n) {
-	if (!IsOpened()) {return false;	}
-	if (n < 0) n = 0;
-	else if(n > 1024) n = 1024;
-	return (write(fd, data, n)==n);
+long ceSerial::Write(char *data, long n) 
+{
+	if (!IsOpened() || n < 0 || n > 1024) 
+	{
+		return -1;
+	}
+
+	// wait buffer is flushed, could not observe difference though
+	int iRc = tcdrain(fd);
+	if (iRc != 0)
+	{
+		return -1;
+	}
+
+	return write(fd, data, n);
 }
 
-bool ceSerial::WriteChar(char ch) {
-	char s[2];
-	s[0]=ch;
-	s[1]=0;//null terminated
-	return Write(s);
-}
 
 bool ceSerial::SetRTS(bool value) {
 	long RTS_flag = TIOCM_RTS;
