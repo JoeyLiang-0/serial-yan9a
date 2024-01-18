@@ -231,89 +231,86 @@ bool ceSerial::IsOpened() {
 	else return true;
 }
 
-bool ceSerial::Write(char *data) {
-	if (!IsOpened()) {
-		return false;
-	}
-	BOOL fRes;
-	DWORD dwWritten;
-	uint32_t n = (uint32_t)strlen(data);
-	if (n < 0) n = 0;
-	else if(n > 1024) n = 1024;
 
-	// Issue write.
-	if (!WriteFile(hComm, data, n, &dwWritten, &osWrite)) {
+long ceSerial::Write(char *data,long n) 
+{
+	if (!IsOpened() || n < 0 || n > 1024) 
+	{
+		return -1;
+	}
+
+	DWORD dwWritten = 0;
+	if (FALSE == WriteFile(hComm, data, n, &dwWritten, &osWrite)) 
+	{
         // WriteFile failed, but it isn't delayed. Report error and abort.
-		if (GetLastError() != ERROR_IO_PENDING) {fRes = FALSE;}
-		else {// Write is pending.
-			if (!GetOverlappedResult(hComm, &osWrite, &dwWritten, TRUE)) fRes = FALSE;
-			else fRes = TRUE;// Write operation completed successfully.
+		if (GetLastError() != ERROR_IO_PENDING) 
+		{
+			return -1;
+		}
+
+		// Write is pending.
+		if (FALSE == GetOverlappedResult(hComm, &osWrite, &dwWritten, TRUE))
+		{
+			return -1;
 		}
 	}
-	else fRes = TRUE;// WriteFile completed immediately.
-	return fRes;
+
+	return dwWritten;
 }
 
-bool ceSerial::Write(char *data,long n) {
-	if (!IsOpened()) {
-		return false;
+bool ceSerial::WriteChar(char ch) 
+{
+	return Write(&ch, 1) == 1;
+}
+
+bool ceSerial::ReadChar(char& ch) 
+{
+	bool bRc = false;
+	if (!IsOpened()) 
+	{
+		return bRc;
 	}
-	BOOL fRes;
-	DWORD dwWritten;
-	if (n < 0) n = 0;
-	else if(n > 1024) n = 1024;
 
-	// Issue write.
-	if (!WriteFile(hComm, data, n, &dwWritten, &osWrite)) {
-        // WriteFile failed, but it isn't delayed. Report error and abort.
-		if (GetLastError() != ERROR_IO_PENDING) {fRes = FALSE;}
-		else {// Write is pending.
-			if (!GetOverlappedResult(hComm, &osWrite, &dwWritten, TRUE)) fRes = FALSE;
-			else fRes = TRUE;// Write operation completed successfully.
-		}
-	}
-	else fRes = TRUE;// WriteFile completed immediately.
-	return fRes;
-}
-
-bool ceSerial::WriteChar(char ch) {
-	char s[2];
-	s[0]=ch;
-	s[1]=0;//null terminated
-	return Write(s);
-}
-
-char ceSerial::ReadChar(bool& success) {
-	success = false;
-	if (!IsOpened()) {return 0;}
-
-	DWORD dwRead;
-	DWORD length=1;
-	BYTE* data = (BYTE*)(&rxchar);
+	DWORD dwRead = 0;
 	//the creation of the overlapped read operation
-	if (!fWaitingOnRead) {
+	if (!fWaitingOnRead) 
+	{
 		// Issue read operation.
-		if (!ReadFile(hComm, data, length, &dwRead, &osReader)) {
-			if (GetLastError() != ERROR_IO_PENDING) { /*Error*/}
-			else { fWaitingOnRead = TRUE; /*Waiting*/}
+		if (!ReadFile(hComm, &ch, 1, &dwRead, &osReader))
+		{
+			if (GetLastError() != ERROR_IO_PENDING) 
+			{ 
+				/*Error*/
+			}
+			else 
+			{ 
+				fWaitingOnRead = TRUE; /*Waiting*/
+			}
 		}
-		else {if(dwRead==length) success = true;}//success
+		else 
+		{
+			bRc = dwRead == 1;
+		}
 	}
-
 
 	//detection of the completion of an overlapped read operation
-	DWORD dwRes;
-	if (fWaitingOnRead) {
+	DWORD dwRes = 0;
+	if (fWaitingOnRead) 
+	{
 		dwRes = WaitForSingleObject(osReader.hEvent, READ_TIMEOUT);
 		switch (dwRes)
 		{
 		// Read completed.
 		case WAIT_OBJECT_0:
-			if (!GetOverlappedResult(hComm, &osReader, &dwRead, FALSE)) {/*Error*/ }
-			else {
-				if (dwRead == length) success = true;
+			if (!GetOverlappedResult(hComm, &osReader, &dwRead, FALSE)) 
+			{
+				/*Error*/ 
+			}
+			else 
+			{
+				bRc = dwRead == 1;
 				fWaitingOnRead = FALSE;
-            // Reset flag so that another opertion can be issued.
+				// Reset flag so that another opertion can be issued.
 			}// Read completed successfully.
 			break;
 
@@ -326,7 +323,8 @@ char ceSerial::ReadChar(bool& success) {
 			break;
 		}
 	}
-	return rxchar;
+
+	return bRc;
 }
 
 bool ceSerial::SetRTS(bool value) {
