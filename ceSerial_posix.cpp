@@ -16,7 +16,11 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#ifdef __APPLE__
+#include <IOKit/serial/ioss.h>
+#else
 #include <linux/serial.h>
+#endif
 
 
 void ceSerial::Delay(unsigned long ms) {
@@ -98,8 +102,10 @@ long ceSerial::Open(void)
 		return errno;
 	}
 
+#ifndef __APPLE__
 	struct serial_struct serinfo;
 	memset(&serinfo, 0, sizeof(serinfo));
+#endif
 	struct termios settings;
 	memset(&settings, 0, sizeof(settings));
 	if (tcgetattr(fd, &settings) < 0)
@@ -132,7 +138,8 @@ long ceSerial::Open(void)
 
 	if (!stdbaud) 
 	{
-		// serial driver to interpret the value B38400 differently		
+#ifndef __APPLE__
+		// serial driver to interpret the value B38400 differently
 		serinfo.reserved_char[0] = 0;
 		if (ioctl(fd, TIOCGSERIAL, &serinfo) < 0) {	return errno;}
 		serinfo.flags &= ~ASYNC_SPD_MASK;
@@ -150,6 +157,7 @@ long ceSerial::Open(void)
 		}
 		cfsetospeed(&settings, B38400);
 		cfsetispeed(&settings, B38400);
+#endif
 	}
 	else 
 	{
@@ -187,11 +195,26 @@ long ceSerial::Open(void)
 	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
 	if (!stdbaud) {
+#ifndef __APPLE__
 		// driver to interpret B38400 as 38400 baud again
 		ioctl(fd, TIOCGSERIAL, &serinfo);
 		serinfo.flags &= ~ASYNC_SPD_MASK;
 		ioctl(fd, TIOCSSERIAL, &serinfo);
+#else
+        speed_t speed = baud;
+        if (ioctl(fd, IOSSIOSPEED, &speed) == -1)
+          return errno;
+#endif
 	}
+    
+#ifdef __APPLE__
+    // Assert Data Terminal Ready (DTR)
+    ioctl(fd, TIOCSDTR);
+    
+    // Clear Data Terminal Ready (DTR)
+    ioctl(fd, TIOCCDTR);
+#endif
+    
 	return 0;
 }
 
@@ -228,7 +251,7 @@ void ceSerial::SetBaudRate(long baudrate) {
         case 57600: baud = B57600; return;
         case 115200: baud = B115200; return;
         case 230400: baud = B230400; return;
-
+#ifndef __APPLE__
         // Extra output baud rates (not in POSIX).  termios-baud.h
         case 460800: baud = B460800; return;
         case 500000: baud = B500000; return;
@@ -242,7 +265,8 @@ void ceSerial::SetBaudRate(long baudrate) {
         case 3000000: baud = B3000000; return;
         case 3500000: baud = B3500000; return;
         case 4000000: baud = B4000000; return;
-        
+#endif
+
         default:
                 baud = baudrate;
                 stdbaud = false;
